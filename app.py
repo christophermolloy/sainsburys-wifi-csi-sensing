@@ -192,12 +192,44 @@ def _box_mesh(x0, x1, y0, y1, z0, z1, color, opacity=1.0, name=""):
     )
 
 
+def _scene_annotation_color(inference_fired, correct, zone_alpha_val):
+    if inference_fired:
+        return STATUS_GOOD if correct else STATUS_CRITICAL
+    if zone_alpha_val > 0.05:
+        return STATUS_WARN
+    return TEXT_MUTED
+
+def _scene_annotation(inference_fired, correct, pred_cls, true_cls, confidence, zone_alpha_val):
+    pc = pred_cls % len(CLASS_LABELS)
+    if inference_fired:
+        verdict = "✓ CORRECT" if correct else "✗ INCORRECT"
+        return (
+            f"<b>{verdict}</b><br>"
+            f"{CLASS_ICONS[pc]}  {CLASS_LABELS[pc]}<br>"
+            f"<span style='font-size:11px;color:{TEXT_MUTED}'>"
+            f"Conf: {confidence[pc]:.1%}</span>"
+        )
+    if zone_alpha_val > 0.05:
+        pct = int(zone_alpha_val * 100)
+        return (
+            f"<b>⏳ Approaching…</b><br>"
+            f"Signal build-up: {pct}%<br>"
+            f"<span style='font-size:11px;color:{TEXT_MUTED}'>"
+            f"Model fires at 30%</span>"
+        )
+    return (
+        f"<b>● Idle</b><br>Detection zone clear<br>"
+        f"<span style='font-size:11px;color:{TEXT_MUTED}'>Drag slider →</span>"
+    )
+
 def build_entrance_scene(
     person_y: float,
     true_cls: int,
     pred_cls: int,
     confidence: np.ndarray,
     csi_row: np.ndarray,
+    zone_alpha_val: float = 0.0,
+    inference_fired: bool = False,
 ) -> go.Figure:
     """
     3D store-entrance visualisation.
@@ -218,9 +250,15 @@ def build_entrance_scene(
     """
     fig = go.Figure()
 
-    correct     = (pred_cls == true_cls)
-    zone_color  = STATUS_GOOD if correct else STATUS_CRITICAL
-    pred_color  = CLASS_COLORS[pred_cls]
+    correct    = (pred_cls == true_cls) if inference_fired else None
+    # Zone outline: green=correct, red=incorrect, amber=person approaching, grey=idle
+    if inference_fired:
+        zone_color = STATUS_GOOD if correct else STATUS_CRITICAL
+    elif zone_alpha_val > 0.05:
+        zone_color = STATUS_WARN   # amber — person entering, model not yet triggered
+    else:
+        zone_color = GRIDLINE      # grey — idle, nobody nearby
+    pred_color  = CLASS_COLORS[pred_cls % len(CLASS_COLORS)]
 
     # ── Floor ────────────────────────────────────────────────────────────────
     fx = np.linspace(-4, 4, 20)
@@ -425,21 +463,16 @@ def build_entrance_scene(
         height=520,
         annotations=[
             dict(
-                text=(
-                    f"<b>{'✓ CORRECT' if correct else '✗ INCORRECT'}</b><br>"
-                    f"{CLASS_ICONS[pred_cls]}  {CLASS_LABELS[pred_cls]}<br>"
-                    f"<span style='font-size:11px;color:{TEXT_MUTED}'>"
-                    f"Conf: {confidence[pred_cls]:.1%}</span>"
+                text=_scene_annotation(
+                    inference_fired, correct, pred_cls, true_cls,
+                    confidence, zone_alpha_val,
                 ),
                 x=0.02, y=0.97,
                 xref="paper", yref="paper",
                 align="left", showarrow=False,
-                font=dict(
-                    color=STATUS_GOOD if correct else STATUS_CRITICAL,
-                    size=13,
-                ),
-                bgcolor=hex_to_rgba(STATUS_GOOD if correct else STATUS_CRITICAL, 0.12),
-                bordercolor=STATUS_GOOD if correct else STATUS_CRITICAL,
+                font=dict(color=_scene_annotation_color(inference_fired, correct, zone_alpha_val), size=13),
+                bgcolor=hex_to_rgba(_scene_annotation_color(inference_fired, correct, zone_alpha_val), 0.12),
+                bordercolor=_scene_annotation_color(inference_fired, correct, zone_alpha_val),
                 borderwidth=1, borderpad=8,
             )
         ],
@@ -808,14 +841,40 @@ cfg_synth = {**cfg, "data": {**cfg["data"], "dataset": "synthetic",
     "synthetic": {**cfg["data"]["synthetic"], "num_classes": 4}}}
 ds_synth = get_synthetic_dataset(cfg_synth)
 
-# Pick a synthetic sample matching the user-chosen class
 rng = np.random.default_rng(seed)
-candidates = [i for i, (_, y) in enumerate(ds_synth) if int(y) == true_cls_idx]
-if not candidates:
-    candidates = list(range(len(ds_synth)))
-idx       = candidates[int(rng.integers(0, len(candidates)))]
-sample_x, sample_y = ds_synth[idx]   # (1, 250, 90)
-csi_np = sample_x.numpy()[0]         # (250, 90) — drives the CSI heatmap
+
+# ── Position-dependent CSI: the key fix that makes the slider meaningful ──────
+# We blend two samples:
+#   alpha = 0  →  background (empty zone, low perturbation)
+#   alpha = 1  →  full class-specific signal (person+object in detection zone)
+# The blend is driven by how deep into the detection zone the person is.
+
+ZONE_CENTER, ZONE_HALF = 6.0, 1.5   # metres
+
+def zone_alpha(y: float) -> float:
+    """Smooth 0→1→0 ramp as person traverses the detection zone (5–7 m)."""
+    t = max(0.0, 1.0 - abs(y - ZONE_CENTER) / ZONE_HALF)
+    return t * t * (3.0 - 2.0 * t)   # smoothstep
+
+alpha = zone_alpha(person_y)
+
+# Background sample (empty class = flat, low-amplitude)
+empty_candidates = [i for i, (_, y) in enumerate(ds_synth) if int(y) == 0]
+bg_idx   = empty_candidates[int(rng.integers(0, len(empty_candidates)))]
+bg_x, _  = ds_synth[bg_idx]
+bg_csi   = bg_x.numpy()[0]   # (250, 90)
+
+# Class-specific sample (person+object in full perturbation)
+class_candidates = [i for i, (_, y) in enumerate(ds_synth) if int(y) == true_cls_idx]
+if not class_candidates:
+    class_candidates = list(range(len(ds_synth)))
+cl_idx      = class_candidates[int(rng.integers(0, len(class_candidates)))]
+class_x, _  = ds_synth[cl_idx]
+class_csi   = class_x.numpy()[0]   # (250, 90)
+
+# Blended CSI — changes continuously as the slider moves
+csi_np   = (1.0 - alpha) * bg_csi + alpha * class_csi   # (250, 90)
+sample_x = torch.from_numpy(csi_np[np.newaxis, :, :].astype(np.float32))  # (1, 250, 90)
 
 # ── UT-HAR dataset — loaded on demand for model-matched evaluation ─────────────
 @st.cache_resource(show_spinner="Loading UT-HAR test split…")
@@ -829,48 +888,53 @@ def get_uthar_test(config):
 ds_uthar = get_uthar_test(cfg) if is_uthar_model else None
 
 # ── Choose which dataset backs the confusion matrix / F1 panels ───────────────
-# This is the honest pairing: each model is always evaluated on its own data.
 eval_ds          = ds_uthar if is_uthar_model else ds_synth
 eval_class_names = model_class_names
 
-# ── Run inference — only meaningful when model sees its own distribution ───────
-# For the 3D scene we ALWAYS use a synthetic sample so the visual is consistent.
-# We show the prediction only when the model is synthetic-trained; otherwise we
-# show the raw UT-HAR logits on UT-HAR data in the bottom panels instead.
+# ── Run inference — gated on both model validity AND zone entry ────────────────
+# Only fire the model when:
+#   (a) a synthetic-trained model is loaded (correct distribution), AND
+#   (b) the person has entered the detection zone (alpha > 0.3)
+# Outside the zone the display shows "Waiting…" — exactly what a real
+# deployment would do: inference is not triggered by background noise.
+
+IN_ZONE_THRESHOLD = 0.3   # alpha must exceed this to trigger model
+
 if model is not None and is_synth_model:
-    # ✓ Meaningful: synthetic model on synthetic data
-    with torch.no_grad():
-        logits = model(sample_x.unsqueeze(0))
-        probs  = torch.softmax(logits, dim=1).numpy()[0]
-    pred_cls   = int(np.argmax(probs))
-    confidence = probs
-    inference_valid = True
+    if alpha >= IN_ZONE_THRESHOLD:
+        # ✓ Person in zone — run inference on position-blended CSI
+        with torch.no_grad():
+            logits = model(sample_x.unsqueeze(0))
+            probs  = torch.softmax(logits, dim=1).numpy()[0]
+        pred_cls        = int(np.argmax(probs))
+        confidence      = probs
+        inference_valid = True
+    else:
+        # Person outside zone — model is idle
+        confidence      = np.full(4, 0.25)
+        pred_cls        = -1   # sentinel: no prediction yet
+        inference_valid = False
 
 elif model is not None and is_uthar_model:
-    # Pick a random UT-HAR test sample and show its real prediction instead.
-    # The 3D scene will be labelled as illustrative (simulation only).
     uthar_idx = int(rng.integers(0, len(eval_ds))) if eval_ds else 0
     if eval_ds:
         ux, uy = eval_ds[uthar_idx]
         with torch.no_grad():
             logits = model(ux.unsqueeze(0))
             probs  = torch.softmax(logits, dim=1).numpy()[0]
-        # Surface the 7-class UT-HAR result directly (don't remap)
         pred_cls_uthar   = int(np.argmax(probs))
         confidence_uthar = probs
         true_cls_uthar   = int(uy)
-    # For the 3D scene, fall back to showing synthetic as illustration only
-    confidence = np.full(4, 0.25)   # flat — we explicitly mark inference_valid=False
-    pred_cls   = true_cls_idx       # show "correct" silhouette; badge will say N/A
+    confidence      = np.full(4, 0.25)
+    pred_cls        = true_cls_idx
     inference_valid = False
 
 else:
-    # No model loaded — simulation only
-    confidence      = rng.dirichlet([2, 1, 1, 1])
-    pred_cls        = int(np.argmax(confidence))
+    confidence      = np.full(4, 0.25)
+    pred_cls        = -1
     inference_valid = False
 
-correct = (pred_cls == true_cls_idx) if inference_valid else None
+correct = (pred_cls == true_cls_idx) if (inference_valid and pred_cls >= 0) else None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -920,12 +984,21 @@ with k3:
     ), unsafe_allow_html=True)
 
 with k4:
-    if inference_valid:
+    if inference_valid and pred_cls >= 0:
         st.markdown(kpi(
-            CLASS_ICONS[pred_cls] + " " + CLASS_LABELS[pred_cls],
-            "Model prediction (synthetic)",
+            CLASS_ICONS[pred_cls] + "  " + CLASS_LABELS[pred_cls],
+            "Model prediction (live)",
             f"{'✓ Correct' if correct else '✗ Incorrect'} — conf {confidence[pred_cls]:.1%}",
             delta_good=correct,
+        ), unsafe_allow_html=True)
+    elif is_synth_model and pred_cls == -1:
+        # Person not yet in zone
+        pct = f"{alpha:.0%}"
+        st.markdown(kpi(
+            "⏳  Waiting…",
+            "Model idle — person outside zone",
+            f"Signal perturbation: {pct} of peak",
+            delta_good=False,
         ), unsafe_allow_html=True)
     elif is_uthar_model and eval_ds:
         st.markdown(kpi(
@@ -966,12 +1039,16 @@ with col_scene:
     else:
         st.warning("No model loaded — scene is illustrative only.", icon="⚠️")
 
-    scene_pred  = pred_cls if inference_valid else true_cls_idx   # show neutral if not valid
-    scene_corr  = correct  if inference_valid is not None else None
-    scene_conf  = confidence if inference_valid else np.full(4, 0.25)
+    scene_pred = pred_cls if (inference_valid and pred_cls >= 0) else true_cls_idx
+    scene_conf = confidence if inference_valid else np.full(4, 0.25)
 
     st.plotly_chart(
-        build_entrance_scene(person_y, true_cls_idx, scene_pred, scene_conf, csi_np[125]),
+        build_entrance_scene(
+            person_y, true_cls_idx, scene_pred, scene_conf, csi_np[125],
+            # Pass alpha so the scene can colour the zone correctly when idle
+            zone_alpha_val=alpha,
+            inference_fired=(inference_valid and pred_cls >= 0),
+        ),
         use_container_width=True,
         config={"displayModeBar": False},
     )
@@ -982,9 +1059,26 @@ with col_scene:
     )
 
 with col_right:
-    # CSI heatmap always shows the synthetic sample (it IS the simulation input)
-    st.markdown('<div class="section-header">CSI SIGNAL HEATMAP — SIMULATION INPUT</div>',
+    # CSI heatmap — updates continuously as the slider moves
+    st.markdown('<div class="section-header">CSI SIGNAL HEATMAP — LIVE</div>',
                 unsafe_allow_html=True)
+
+    # Perturbation meter: shows signal build-up as person enters zone
+    bar_color  = STATUS_GOOD if (inference_valid and pred_cls >= 0) else (
+                 STATUS_WARN if alpha > 0.05 else GRIDLINE)
+    bar_pct    = int(alpha * 100)
+    idle_label = "MODEL FIRING" if (inference_valid and pred_cls >= 0) else (
+                 f"APPROACHING — {bar_pct}%" if alpha > 0.05 else "IDLE")
+    st.markdown(
+        f'<div style="margin-bottom:8px">'
+        f'<div style="display:flex;justify-content:space-between;'
+        f'font-size:0.7rem;color:{TEXT_MUTED};margin-bottom:3px">'
+        f'<span>SIGNAL PERTURBATION</span><span style="color:{bar_color}">{idle_label}</span></div>'
+        f'<div style="background:{GRIDLINE};border-radius:3px;height:6px;width:100%">'
+        f'<div style="background:{bar_color};border-radius:3px;height:6px;'
+        f'width:{bar_pct}%;transition:width 0.2s"></div></div></div>',
+        unsafe_allow_html=True,
+    )
     st.plotly_chart(
         build_csi_heatmap(csi_np, title=""),
         use_container_width=True,
