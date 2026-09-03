@@ -777,37 +777,64 @@ with st.sidebar:
     ckpt_path  = ckpt_options[ckpt_label]
 
     st.divider()
-    st.markdown("**Simulate entrance walk-through**")
-    person_y = st.slider(
-        "Person position (m from entrance)", 0.0, 11.5, 6.0, step=0.5,
-        help="Drag to simulate a person walking through the entrance gate. "
-             "Detection zone is between 5–7 m.",
-    )
 
-    st.divider()
-    st.markdown("**True object class**")
-    true_cls = st.radio(
-        "", CLASS_LABELS, index=3,
-        help="What is the person actually carrying? Used to compare against model prediction.",
-        label_visibility="collapsed",
-    )
-    true_cls_idx = CLASS_LABELS.index(true_cls)
+    # ── Controls adapt to which model is selected ─────────────────────────────
+    # We need to know is_uthar_model here, but model loading happens below.
+    # Read ckpt_path to infer it early (same logic as below).
+    _is_uthar_sidebar = "uthar" in (ckpt_path or "")
 
-    st.divider()
-    st.markdown("**Sample**")
-    sample_seed = st.number_input("Random sample seed", 0, 9999, 42, step=1)
-    if st.button("🎲  New sample", use_container_width=True):
-        st.session_state["seed"] = int(np.random.randint(0, 9999))
+    if not _is_uthar_sidebar:
+        # ── Synthetic mode: entrance walkthrough slider ───────────────────────
+        st.markdown("**🚶 Simulate entrance walk-through**")
+        person_y = st.slider(
+            "Person position (m from entrance)", 0.0, 11.5, 6.0, step=0.5,
+            help="Drag to walk the person through the gate. "
+                 "Model fires when signal perturbation exceeds 30% (≈5.5–6.5 m).",
+        )
+        uthar_sample_idx = 0   # unused in this mode
 
-    st.divider()
-    st.markdown(
-        '<div style="font-size:0.72rem; color:#898781;">'
-        "Detection zone: 5–7 m from entrance gate.<br>"
-        "Green outline = correct prediction.<br>"
-        "Red outline = incorrect prediction."
-        "</div>",
-        unsafe_allow_html=True,
-    )
+        st.divider()
+        st.markdown("**True object class**")
+        true_cls = st.radio(
+            "", CLASS_LABELS, index=3,
+            help="What the person is carrying — compared against model prediction.",
+            label_visibility="collapsed",
+        )
+        true_cls_idx = CLASS_LABELS.index(true_cls)
+
+        st.divider()
+        sample_seed = st.number_input("Random sample seed", 0, 9999, 42, step=1)
+        if st.button("🎲  New sample", use_container_width=True):
+            st.session_state["seed"] = int(np.random.randint(0, 9999))
+
+        st.divider()
+        st.markdown(
+            '<div style="font-size:0.72rem;color:#898781">'
+            "Zone: 5–7 m · Green = correct · Red = incorrect"
+            "</div>", unsafe_allow_html=True,
+        )
+
+    else:
+        # ── UT-HAR mode: step through real test samples ───────────────────────
+        st.markdown("**🗂 Step through real UT-HAR test samples**")
+        uthar_sample_idx = st.slider(
+            "Test sample index", 0, 499, 0, step=1,
+            help="Each position is a real WiFi CSI recording from the UT-HAR dataset. "
+                 "Drag to see how the ResNet classifies different samples.",
+        )
+        person_y     = 6.0     # always in-zone for UT-HAR display
+        true_cls_idx = 0       # overridden by actual UT-HAR label below
+        true_cls     = CLASS_LABELS[0]
+        sample_seed  = 42
+
+        st.divider()
+        st.markdown(
+            '<div style="font-size:0.72rem;color:#898781">'
+            "Each sample is real 802.11n CSI from the Intel 5300 NIC.<br>"
+            "7 classes: lie down · fall · pick up · run · sit · stand · walk<br>"
+            "ResNet test accuracy: <b>84.2%</b>"
+            "</div>", unsafe_allow_html=True,
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -916,7 +943,8 @@ if model is not None and is_synth_model:
         inference_valid = False
 
 elif model is not None and is_uthar_model:
-    uthar_idx = int(rng.integers(0, len(eval_ds))) if eval_ds else 0
+    # Use the sample index driven by the sidebar slider (not a random pick)
+    uthar_idx = min(uthar_sample_idx, len(eval_ds) - 1) if eval_ds else 0
     if eval_ds:
         ux, uy = eval_ds[uthar_idx]
         with torch.no_grad():
@@ -925,6 +953,13 @@ elif model is not None and is_uthar_model:
         pred_cls_uthar   = int(np.argmax(probs))
         confidence_uthar = probs
         true_cls_uthar   = int(uy)
+        # Override the CSI heatmap with the REAL UT-HAR sample's data
+        csi_np = ux.numpy()[0]   # shape (250, 90) — real measured CSI
+    # Map UT-HAR 7-class label → 4-class shape for the 3D scene silhouette
+    # lie→empty, fall→person, pickup→basket, run→person,
+    # sitdown→empty, standup→person, walk→person
+    _uthar_to_4 = [0, 1, 2, 1, 0, 1, 1]
+    true_cls_idx    = _uthar_to_4[true_cls_uthar] if eval_ds else 0
     confidence      = np.full(4, 0.25)
     pred_cls        = true_cls_idx
     inference_valid = False
