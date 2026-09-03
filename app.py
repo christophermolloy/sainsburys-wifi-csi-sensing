@@ -1053,45 +1053,91 @@ st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 col_scene, col_right = st.columns([3, 2], gap="medium")
 
 with col_scene:
-    st.markdown('<div class="section-header">3D ENTRANCE SIMULATION</div>', unsafe_allow_html=True)
-
-    # ── Context banner — honest about what the scene is showing ──────────────
-    if inference_valid:
-        st.success(
-            f"**Live inference** — CNN trained on synthetic 4-class data. "
-            f"Prediction: **{CLASS_LABELS[pred_cls]}** ({confidence[pred_cls]:.1%} confidence). "
-            f"Green/red zone outline = correct/incorrect.",
-            icon="✅",
-        )
-    elif is_uthar_model:
+    if is_uthar_model:
+        # ── UT-HAR mode: the 3D entrance scene is meaningless here ───────────
+        # UT-HAR is indoor activity recognition (7 classes, Intel 5300 NIC),
+        # not a store entrance. Don't show a silhouette — show what's real.
+        st.markdown('<div class="section-header">CSI SIGNAL — FULL RECORDING</div>',
+                    unsafe_allow_html=True)
         st.info(
-            "**Simulation only** — The 3D scene shows the Sainsbury's entrance scenario "
-            "using synthetic data. The UT-HAR model was trained on *real* CSI data with "
-            "7 different activity classes — running it on synthetic data would produce "
-            "meaningless outputs. Its real performance is shown in the bottom panels below.",
+            "**3D entrance simulation hidden** — this model was trained on "
+            "indoor activity data (UT-HAR), not Sainsbury's entrance geometry. "
+            "Use the slider to step through the 500 real test recordings and "
+            "see how the model classifies each one. The heatmap and confidence "
+            "bars on the right are the meaningful outputs.",
             icon="ℹ️",
         )
+        if eval_ds is not None:
+            # Show the full CSI recording (all 250 time steps) as a large heatmap
+            fig_full = go.Figure(go.Heatmap(
+                z=csi_np.T,           # (90 subcarriers × 250 timesteps)
+                colorscale="Blues",
+                showscale=False,
+                hovertemplate="Time %{x} · Subcarrier %{y}<br>Amplitude %{z:.3f}<extra></extra>",
+            ))
+            uthar_class_name = model_class_names[true_cls_uthar] if eval_ds else "—"
+            uthar_pred_name  = model_class_names[pred_cls_uthar]  if eval_ds else "—"
+            correct_uthar    = (true_cls_uthar == pred_cls_uthar)
+            result_color     = STATUS_GOOD if correct_uthar else STATUS_CRITICAL
+            result_label     = "✓ correct" if correct_uthar else "✗ wrong"
+            fig_full.update_layout(
+                paper_bgcolor=PAGE_BG, plot_bgcolor=SURFACE,
+                xaxis=dict(title="Time step", tickfont=dict(size=9, color=TEXT_MUTED),
+                           gridcolor=GRIDLINE, zeroline=False),
+                yaxis=dict(title="Subcarrier", tickfont=dict(size=9, color=TEXT_MUTED),
+                           gridcolor=GRIDLINE),
+                margin=dict(l=0, r=0, t=30, b=0), height=370,
+                title=dict(
+                    text=(
+                        f"Sample {uthar_sample_idx} · True: <b>{uthar_class_name}</b> · "
+                        f"Predicted: <b>{uthar_pred_name}</b> "
+                        f"<span style='color:{result_color}'>{result_label}</span>"
+                    ),
+                    font=dict(size=12, color=TEXT_PRIMARY),
+                    x=0,
+                ),
+                font=dict(color=TEXT_PRIMARY),
+            )
+            st.plotly_chart(fig_full, use_container_width=True,
+                            config={"displayModeBar": False})
+            st.caption(
+                f"90 subcarriers (30 × 3 antenna pairs) · 250 time steps · "
+                f"Intel 5300 NIC · UT-HAR test split"
+            )
+        else:
+            st.caption("Download UT-HAR data to see recordings — run `python data/download.py`.")
+
     else:
-        st.warning("No model loaded — scene is illustrative only.", icon="⚠️")
+        # ── Synthetic / no model: show the entrance simulation ───────────────
+        st.markdown('<div class="section-header">3D ENTRANCE SIMULATION</div>',
+                    unsafe_allow_html=True)
+        if inference_valid:
+            st.success(
+                f"**Live inference** — model trained on synthetic 4-class data. "
+                f"Prediction: **{CLASS_LABELS[pred_cls]}** ({confidence[pred_cls]:.1%} confidence). "
+                f"Green/red zone outline = correct/incorrect.",
+                icon="✅",
+            )
+        else:
+            st.warning("No model loaded — scene is illustrative only.", icon="⚠️")
 
-    scene_pred = pred_cls if (inference_valid and pred_cls >= 0) else true_cls_idx
-    scene_conf = confidence if inference_valid else np.full(4, 0.25)
+        scene_pred = pred_cls if (inference_valid and pred_cls >= 0) else true_cls_idx
+        scene_conf = confidence if inference_valid else np.full(4, 0.25)
 
-    st.plotly_chart(
-        build_entrance_scene(
-            person_y, true_cls_idx, scene_pred, scene_conf, csi_np[125],
-            # Pass alpha so the scene can colour the zone correctly when idle
-            zone_alpha_val=alpha,
-            inference_fired=(inference_valid and pred_cls >= 0),
-        ),
-        use_container_width=True,
-        config={"displayModeBar": False},
-    )
-    st.caption(
-        "Drag to rotate · Scroll to zoom · "
-        + ("Green outline = correct prediction · " if inference_valid else "Outline = detection zone · ")
-        + "Signal arc: blue (low perturbation) → orange (high)"
-    )
+        st.plotly_chart(
+            build_entrance_scene(
+                person_y, true_cls_idx, scene_pred, scene_conf, csi_np[125],
+                zone_alpha_val=alpha,
+                inference_fired=(inference_valid and pred_cls >= 0),
+            ),
+            use_container_width=True,
+            config={"displayModeBar": False},
+        )
+        st.caption(
+            "Drag to rotate · Scroll to zoom · "
+            + ("Green outline = correct prediction · " if inference_valid else "Outline = detection zone · ")
+            + "Signal arc: blue (low perturbation) → orange (high)"
+        )
 
 with col_right:
     # CSI heatmap — updates continuously as the slider moves
