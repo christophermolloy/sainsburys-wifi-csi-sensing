@@ -1,0 +1,81 @@
+# Sainsbury's WiFi CSI Sensing — Experiment Configuration
+
+data:
+  dataset: synthetic       # Options: synthetic, uthar, entrance
+  data_dir: ./data/raw
+  time_steps: 250          # CSI frames per sample window
+  num_subcarriers: 90      # 30 subcarriers × 3 antenna pairs (UT-HAR)
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+  batch_size: 64
+  num_workers: 4
+  # Synthetic dataset config
+  synthetic:
+    num_samples: 2000
+    seed: 42
+    num_classes: 4         # empty, person_only, person_basket, person_trolley
+  # UT-HAR config
+  uthar:
+    num_classes: 7         # lie_down, fall, pick_up, run, sit_down, stand_up, walk
+  # Entrance (custom collected) config
+  entrance:
+    data_dir: ./data/raw/entrance
+    window_size: 250
+    stride: 125
+    num_classes: 4
+
+model:
+  architecture: cnn        # Options: cnn, resnet, lstm, transformer
+  num_classes: 4           # Set automatically if dataset is specified
+  cnn:
+    filters: [64, 128, 256]
+    kernel_size: [3, 3]
+    dropout: 0.5
+  resnet:
+    channels: [64, 128, 256, 512]
+    dropout: 0.5
+  lstm:
+    hidden_size: 128
+    num_layers: 2
+    dropout: 0.5
+    bidirectional: true
+    use_attention: true
+  transformer:
+    d_model: 64
+    nhead: 4
+    num_encoder_layers: 2
+    dim_feedforward: 256
+    dropout: 0.1
+
+training:
+  epochs: 50
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  scheduler: cosine        # Options: cosine, step, none
+  step_size: 10
+  gamma: 0.5
+  early_stopping_patience: 10
+  checkpoint_dir: ./checkpoints
+  log_dir: ./logs
+  seed: 42
+
+classes:
+  synthetic:
+    - empty
+    - person_only
+    - person_basket
+    - person_trolley
+  uthar:
+    - lie_down
+    - fall
+    - pick_up
+    - run
+    - sit_down
+    - stand_up
+    - walk
+  entrance:
+    - empty
+    - person_only
+    - person_basket
+    - person_trolley

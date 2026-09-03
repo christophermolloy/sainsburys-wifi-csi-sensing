@@ -1,0 +1,84 @@
+[train] Device: mps
+[train] Building dataset: uthar
+[train] Train: 3977 | Val: 496 | Test: 500 samples
+[train] Building model: resnet
+[train] Trainable parameters: 2,797,543
+
+[train] Starting training for 50 epochs …
+
+Epoch   1/50 | loss=1.4135 acc=0.5043 | val_loss=1.5090 val_acc=0.5746 | 13.4s
+[EarlyStopping] New best score: 1.508961
+[EarlyStopping] Checkpoint saved → checkpoints/best_resnet_uthar.pt
+Epoch   2/50 | loss=0.8846 acc=0.6681 | val_loss=1.4012 val_acc=0.5786 | 12.9s
+[EarlyStopping] New best score: 1.401232
+[EarlyStopping] Checkpoint saved → checkpoints/best_resnet_uthar.pt
+Epoch   3/50 | loss=0.6291 acc=0.7699 | val_loss=1.9943 val_acc=0.4677 | 12.0s
+[EarlyStopping] No improvement for 1/10 epochs (best=1.401232, current=1.994278)
+Epoch   4/50 | loss=0.4486 acc=0.8392 | val_loss=0.6372 val_acc=0.7661 | 12.2s
+[EarlyStopping] New best score: 0.637191
+[EarlyStopping] Checkpoint saved → checkpoints/best_resnet_uthar.pt
+Epoch   5/50 | loss=0.2936 acc=0.8916 | val_loss=0.9524 val_acc=0.7440 | 12.0s
+[EarlyStopping] No improvement for 1/10 epochs (best=0.637191, current=0.952389)
+Epoch   6/50 | loss=0.2369 acc=0.9214 | val_loss=0.8209 val_acc=0.7560 | 12.3s
+[EarlyStopping] No improvement for 2/10 epochs (best=0.637191, current=0.820925)
+Epoch   7/50 | loss=0.1542 acc=0.9524 | val_loss=1.2904 val_acc=0.6996 | 12.2s
+[EarlyStopping] No improvement for 3/10 epochs (best=0.637191, current=1.290420)
+Epoch   8/50 | loss=0.1225 acc=0.9554 | val_loss=0.8767 val_acc=0.7903 | 12.1s
+[EarlyStopping] No improvement for 4/10 epochs (best=0.637191, current=0.876666)
+Epoch   9/50 | loss=0.1112 acc=0.9632 | val_loss=0.8428 val_acc=0.7843 | 12.0s
+[EarlyStopping] No improvement for 5/10 epochs (best=0.637191, current=0.842850)
+Epoch  10/50 | loss=0.0623 acc=0.9783 | val_loss=1.0338 val_acc=0.7681 | 12.1s
+[EarlyStopping] No improvement for 6/10 epochs (best=0.637191, current=1.033825)
+Epoch  11/50 | loss=0.0701 acc=0.9733 | val_loss=0.9779 val_acc=0.7520 | 12.1s
+[EarlyStopping] No improvement for 7/10 epochs (best=0.637191, current=0.977924)
+Epoch  12/50 | loss=0.0572 acc=0.9819 | val_loss=0.9324 val_acc=0.8105 | 12.1s
+[EarlyStopping] No improvement for 8/10 epochs (best=0.637191, current=0.932446)
+Epoch  13/50 | loss=0.0479 acc=0.9871 | val_loss=0.5331 val_acc=0.8286 | 12.2s
+[EarlyStopping] New best score: 0.533087
+[EarlyStopping] Checkpoint saved → checkpoints/best_resnet_uthar.pt
+Epoch  14/50 | loss=0.0417 acc=0.9851 | val_loss=0.9771 val_acc=0.7903 | 12.3s
+[EarlyStopping] No improvement for 1/10 epochs (best=0.533087, current=0.977122)
+Epoch  15/50 | loss=0.0370 acc=0.9874 | val_loss=0.7269 val_acc=0.8266 | 12.1s
+[EarlyStopping] No improvement for 2/10 epochs (best=0.533087, current=0.726920)
+Epoch  16/50 | loss=0.0176 acc=0.9945 | val_loss=0.8154 val_acc=0.8085 | 12.2s
+[EarlyStopping] No improvement for 3/10 epochs (best=0.533087, current=0.815441)
+Epoch  17/50 | loss=0.0233 acc=0.9927 | val_loss=0.6873 val_acc=0.8165 | 12.5s
+[EarlyStopping] No improvement for 4/10 epochs (best=0.533087, current=0.687322)
+Epoch  18/50 | loss=0.0151 acc=0.9947 | val_loss=0.5346 val_acc=0.8589 | 12.1s
+[EarlyStopping] No improvement for 5/10 epochs (best=0.533087, current=0.534607)
+Epoch  19/50 | loss=0.0046 acc=0.9990 | val_loss=0.5469 val_acc=0.8569 | 12.2s
+[EarlyStopping] No improvement for 6/10 epochs (best=0.533087, current=0.546903)
+Epoch  20/50 | loss=0.0027 acc=0.9995 | val_loss=0.5577 val_acc=0.8669 | 12.3s
+[EarlyStopping] No improvement for 7/10 epochs (best=0.533087, current=0.557708)
+Epoch  21/50 | loss=0.0056 acc=0.9987 | val_loss=0.5351 val_acc=0.8548 | 12.2s
+[EarlyStopping] No improvement for 8/10 epochs (best=0.533087, current=0.535075)
+Epoch  22/50 | loss=0.0089 acc=0.9975 | val_loss=0.5777 val_acc=0.8548 | 12.2s
+[EarlyStopping] No improvement for 9/10 epochs (best=0.533087, current=0.577736)
+Epoch  23/50 | loss=0.0081 acc=0.9982 | val_loss=0.5398 val_acc=0.8629 | 12.3s
+[EarlyStopping] No improvement for 10/10 epochs (best=0.533087, current=0.539788)
+[EarlyStopping] Patience exhausted after 10 epochs. Stopping training.
+[train] Early stopping at epoch 23.
+
+[train] Training complete in 4.7 min.
+[visualise] Saved → logs/training_curves_resnet_uthar.png
+
+[train] Loading best checkpoint for test evaluation …
+
+============================================================
+TEST ACCURACY: 0.8420
+============================================================
+              precision    recall  f1-score   support
+
+    lie_down       0.79      0.64      0.71        66
+        fall       0.76      0.76      0.76        45
+     pick_up       0.94      0.99      0.96       147
+         run       0.72      0.88      0.79        50
+    sit_down       0.94      0.90      0.92       121
+    stand_up       0.75      0.53      0.62        40
+        walk       0.60      0.84      0.70        31
+
+    accuracy                           0.84       500
+   macro avg       0.79      0.79      0.78       500
+weighted avg       0.85      0.84      0.84       500
+
+[train] Results saved → logs/results_20260903_171056.json
